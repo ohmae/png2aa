@@ -8,28 +8,36 @@
 #include <unistd.h>
 #include <libpng16/png.h>
 #include <setjmp.h>
+#include <pthread.h>
 #include "common.h"
 
-typedef struct image_t {
-    int width;
-    int height;
-    uint8_t **map;
-} image_t;
+#define DEFAULT_THREAD_NUM 4
 
-static void read_code_book_file(char *filename, code_book_t *book);
-static void read_code_book_stream(FILE *file, code_book_t *book);
+typedef struct work_t {
+    pthread_t thread_id;
+    int start;
+    int end;
+    code_book_t *code_book;
+    image_t *image;
+    aa_t *aa;
+} work_t;
+
+static void read_code_book_file(char *filename, code_book_t *code_book);
+static void read_code_book_stream(FILE *file, code_book_t *code_book);
 static uint8_t rgb_to_gray(uint8_t r, uint8_t g, uint8_t b);
-static void read_png_file(char *filename, image_t *img);
-static void read_png_stream(FILE *file, image_t *img);
+static void read_png_file(char *filename, image_t *image);
+static void read_png_stream(FILE *file, image_t *image);
 static void free_image(image_t *img);
-static void image_to_text(FILE *file, code_book_t *book, image_t *img);
+static void image_to_text(FILE *file, code_book_t *code_book, image_t *image, int thread_num);
 static int calculate_distance(uint8_t *a, uint8_t *b);
+static void *work_fragment(void *argument);
 
 int main(int argc, char **argv) {
     char *code_book_file = NULL;
     char *image_file = NULL;
+    int thread_num = DEFAULT_THREAD_NUM;
     int opt;
-    while ((opt = getopt(argc, argv, "c:i:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:i:j:")) != -1) {
         switch (opt) {
             case 'c':
                 code_book_file = optarg;
@@ -37,10 +45,16 @@ int main(int argc, char **argv) {
             case 'i':
                 image_file = optarg;
                 break;
+            case 'j':
+                thread_num = atoi(optarg);
+                break;
         }
     }
+    if (thread_num < 1) {
+        thread_num = DEFAULT_THREAD_NUM;
+    }
     if (code_book_file == NULL || image_file == NULL) {
-        ERR("使用用法: png2txt -c <code book> -i <image_t>");
+        ERR("使用用法: png2txt -c <code book> -i <image> -j <jobs>");
         return EXIT_FAILURE;
     }
     code_book_t book;
@@ -48,23 +62,23 @@ int main(int argc, char **argv) {
     read_code_book_file(code_book_file, &book);
     image_t img;
     read_png_file(image_file, &img);
-    image_to_text(stdout, &book, &img);
+    image_to_text(stdout, &book, &img, thread_num);
     free_image(&img);
     free_code_book(&book);
     return EXIT_SUCCESS;
 }
 
-static void read_code_book_file(char *filename, code_book_t *book) {
+static void read_code_book_file(char *filename, code_book_t *code_book) {
     FILE *file = fopen(filename, "r");
     if (file == NULL) {
         perror(filename);
         exit(EXIT_FAILURE);
     }
-    read_code_book_stream(file, book);
+    read_code_book_stream(file, code_book);
     fclose(file);
 }
 
-static void read_code_book_stream(FILE *file, code_book_t *book) {
+static void read_code_book_stream(FILE *file, code_book_t *code_book) {
     char string[100];
     int code[CODE_SIZE];
     while (fscanf(file, "%x,%x,%x,%x,%x,%x,%x,%x,%x,%s",
@@ -78,7 +92,7 @@ static void read_code_book_stream(FILE *file, code_book_t *book) {
             cell->code[i] = code[i];
         }
         cell->unicode = read_utf8_as_unicode(string, NULL);
-        book->book[book->size++] = cell;
+        code_book->book[code_book->size++] = cell;
     }
 }
 
@@ -86,17 +100,17 @@ static uint8_t rgb_to_gray(uint8_t r, uint8_t g, uint8_t b) {
     return (uint8_t) (0.299f * r + 0.587f * g + 0.114f * b + 0.5f);
 }
 
-static void read_png_file(char *filename, image_t *img) {
+static void read_png_file(char *filename, image_t *image) {
     FILE *file = fopen(filename, "rb");
     if (file == NULL) {
         perror(filename);
         exit(EXIT_FAILURE);
     }
-    read_png_stream(file, img);
+    read_png_stream(file, image);
     fclose(file);
 }
 
-static void read_png_stream(FILE *file, image_t *img) {
+static void read_png_stream(FILE *file, image_t *image) {
     int i, x, y;
     int width, height;
     int num;
@@ -128,12 +142,12 @@ static void read_png_stream(FILE *file, image_t *img) {
     png_read_png(png, info, PNG_TRANSFORM_PACKING | PNG_TRANSFORM_STRIP_16, NULL);
     width = png_get_image_width(png, info);
     height = png_get_image_height(png, info);
-    img->map = xmalloc(sizeof(uint8_t*) * height);
+    image->map = xmalloc(sizeof(uint8_t*) * height);
     for (int y = 0; y < height; y++) {
-        img->map[y] = xmalloc(sizeof(uint8_t) * width);
+        image->map[y] = xmalloc(sizeof(uint8_t) * width);
     }
-    img->width = width;
-    img->height = height;
+    image->width = width;
+    image->height = height;
     png_bytepp rows = png_get_rows(png, info);
     switch (png_get_color_type(png, info)) {
         case PNG_COLOR_TYPE_PALETTE:
@@ -154,7 +168,7 @@ static void read_png_stream(FILE *file, image_t *img) {
             for (y = 0; y < height; y++) {
                 png_bytep row = rows[y];
                 for (x = 0; x < width; x++) {
-                    img->map[y][x] = p[*row++];
+                    image->map[y][x] = p[*row++];
                 }
             }
         }
@@ -163,7 +177,7 @@ static void read_png_stream(FILE *file, image_t *img) {
             for (y = 0; y < height; y++) {
                 png_bytep row = rows[y];
                 for (x = 0; x < width; x++) {
-                    img->map[y][x] = *row++;
+                    image->map[y][x] = *row++;
                 }
             }
             break;
@@ -173,7 +187,7 @@ static void read_png_stream(FILE *file, image_t *img) {
                 for (x = 0; x < width; x++) {
                     uint8_t g = *row++;
                     uint8_t a = *row++;
-                    img->map[y][x] = g * a / 255 + 255 - a;
+                    image->map[y][x] = g * a / 255 + 255 - a;
                 }
             }
             break;
@@ -184,7 +198,7 @@ static void read_png_stream(FILE *file, image_t *img) {
                     uint8_t r = *row++;
                     uint8_t g = *row++;
                     uint8_t b = *row++;
-                    img->map[y][x] = rgb_to_gray(r, g, b);
+                    image->map[y][x] = rgb_to_gray(r, g, b);
                 }
             }
             break;
@@ -197,7 +211,7 @@ static void read_png_stream(FILE *file, image_t *img) {
                     uint8_t b = *row++;
                     uint8_t a = *row++;
                     uint8_t gray = rgb_to_gray(r, g, b);
-                    img->map[y][x] = gray * a / 255 + 255 - a;
+                    image->map[y][x] = gray * a / 255 + 255 - a;
                 }
             }
             break;
@@ -211,31 +225,70 @@ static void free_image(image_t *img) {
     free(img->map);
 }
 
-static void image_to_text(FILE *file, code_book_t *book, image_t *img) {
-    int width = img->width / CODE_WIDTH;
-    int height = img->height / CODE_WIDTH;
-    fprintf(file, "%d %d\n", width, height);
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
+static void *work_fragment(void *argument) {
+    work_t *work = (work_t *)argument;
+
+    for (int y = work->start; y < work->end; y++) {
+        for (int x = 0; x < work->aa->width; x++) {
             uint8_t sample[CODE_SIZE];
             for (int cy = 0; cy < CODE_WIDTH; cy++) {
                 for (int cx = 0; cx < CODE_WIDTH; cx++) {
-                    sample[cy * CODE_WIDTH + cx] = img->map[y * CODE_WIDTH + cy][x * CODE_WIDTH + cx];
+                    sample[cy * CODE_WIDTH + cx] =  work->image->map[y * CODE_WIDTH + cy][x * CODE_WIDTH + cx];
                 }
             }
             int min = INT_MAX;
             int index = 0;
-            for (int i = 0; i < book->size; i++) {
-                int d = calculate_distance(sample, book->book[i]->code);
+            for (int i = 0; i <  work->code_book->size; i++) {
+                int d = calculate_distance(sample,  work->code_book->book[i]->code);
                 if (min > d) {
                     min = d;
                     index = i;
                 }
             }
-            print_unicode_as_utf8(file, book->book[index]->unicode);
+            work->aa->map[y][x] = work->code_book->book[index]->unicode;
+        }
+    }
+}
+
+static void image_to_text(FILE *file, code_book_t *code_book, image_t *image, int thread_num) {
+    int width = image->width / CODE_WIDTH;
+    int height = image->height / CODE_WIDTH;
+    aa_t aa;
+    aa.width = width;
+    aa.height = height;
+    aa.map = xmalloc(sizeof(uint32_t*) * height);
+    for (int i = 0; i < height; i++) {
+        aa.map[i] = xmalloc(sizeof(uint32_t) * width);
+    }
+    int step = 0;
+    work_t *works = xmalloc(sizeof(work_t)* thread_num);
+    if (thread_num > height) {
+        thread_num = height;
+    }
+    for (int i = 0; i < thread_num; i++) {
+        works[i].code_book = code_book;
+        works[i].image = image;
+        works[i].aa = &aa;
+        works[i].start = step;
+        step += height / thread_num + (i < height % thread_num);
+        works[i].end = step;
+        pthread_create(&works[i].thread_id, NULL, work_fragment, &works[i]);
+    }
+    for (int i = 0; i < thread_num; i++) {
+        pthread_join(works[i].thread_id, NULL);
+    }
+    free(works);
+    fprintf(file, "%d %d\n", width, height);
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            print_unicode_as_utf8(file, aa.map[y][x]);
         }
         fprintf(file, "\n");
     }
+    for (int i = 0; i < height; i++) {
+        free(aa.map[i]);
+    }
+    free(aa.map);
 }
 
 static int calculate_distance(uint8_t *a, uint8_t *b) {

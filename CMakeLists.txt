@@ -14,11 +14,15 @@ include(FindPNG)
 include_directories(${PNG_INCLUDE_DIRS})
 link_directories(${PNG_LIBRARIES})
 
+find_package(Threads REQUIRED)
+
+
 add_executable(make_code_book make_code_book.c common.c)
 add_executable(png2txt png2txt.c common.c)
 add_executable(txt2png txt2png.c common.c)
 
 target_link_libraries(make_code_book ${FREETYPE_LIBRARIES})
 target_link_libraries(png2txt ${PNG_LIBRARIES})
+target_link_libraries(png2txt Threads::Threads)
 target_link_libraries(txt2png ${FREETYPE_LIBRARIES})
 target_link_libraries(txt2png ${PNG_LIBRARIES})

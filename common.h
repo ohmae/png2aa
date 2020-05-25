@@ -41,6 +41,18 @@ typedef struct code_book_t {
     int size;
 } code_book_t;
 
+typedef struct aa_t {
+    int width;
+    int height;
+    uint32_t **map;
+} aa_t;
+
+typedef struct image_t {
+    int width;
+    int height;
+    uint8_t **map;
+} image_t;
+
 void *xmalloc(size_t n);
 void init_code_book(code_book_t *code_book);
 void free_code_book(code_book_t *code_book);

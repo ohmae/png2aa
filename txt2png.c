@@ -12,18 +12,6 @@
 #include FT_FREETYPE_H
 #include "common.h"
 
-typedef struct aa_t {
-    int width;
-    int height;
-    uint32_t **map;
-} aa_t;
-
-typedef struct image_t {
-    int width;
-    int height;
-    uint8_t **map;
-} image_t;
-
 static int find_strike_index(FT_Face face);
 static void read_aa_file(const char* filename, aa_t *aa);
 static void read_aa_stream(FILE *file, aa_t *aa);

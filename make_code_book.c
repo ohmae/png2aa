@@ -31,7 +31,6 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
     }
     FT_Select_Size(face, strike_index);
-    m(face, 0x3042);
     code_book_t code_book;
     init_code_book(&code_book);
     for (int i = 0x80; i <= 0xffff; i++) {
