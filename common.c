@@ -16,16 +16,34 @@ void *xmalloc(size_t n) {
     return p;
 }
 
+void *xrealloc(void *ptr, size_t size) {
+    void *p = realloc(ptr, size);
+    if (p == NULL) {
+        perror("");
+        exit(EXIT_FAILURE);
+    }
+    return p;
+}
+
 void init_code_book(code_book_t *code_book) {
     code_book->size = 0;
-    code_book->book = xmalloc(sizeof(code_cell_t *) * 10000);
+    code_book->capacity = 8;
+    code_book->code = xmalloc(sizeof(code_cell_t *) * 8);
 }
 
 void free_code_book(code_book_t *code_book) {
     for (int i = 0; i < code_book->size; ++i) {
-        free(code_book->book[i]);
+        free(code_book->code[i]);
     }
-    free(code_book->book);
+    free(code_book->code);
+}
+
+void add_code_book(code_book_t *code_book, code_cell_t *code_cell) {
+    if (code_book->size == code_book->capacity) {
+        code_book->capacity *= 2;
+        code_book->code = xrealloc(code_book->code, sizeof(code_cell_t *) * code_book->capacity);
+    }
+    code_book->code[code_book->size++] = code_cell;
 }
 
 void print_unicode_as_utf8(FILE *file, uint32_t unicode) {

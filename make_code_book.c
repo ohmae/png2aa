@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
     for (int i = 0x80; i <= 0xffff; i++) {
         code_cell_t *code = make_code_cell(face, i);
         if (code != NULL) {
-            code_book.book[code_book.size++] = code;
+            add_code_book(&code_book, code);
         }
     }
     FT_Done_Face(face);
@@ -121,10 +121,10 @@ static int compare_code(const void *a, const void *b) {
 }
 
 static void print_code_book(FILE *file, code_book_t *code_book) {
-    qsort(code_book->book, code_book->size, sizeof(code_cell_t *), compare_code);
+    qsort(code_book->code, code_book->size, sizeof(code_cell_t *), compare_code);
     code_cell_t *last_cell = NULL;
     for (int i = 0; i < code_book->size; i++) {
-        code_cell_t *code_cell = code_book->book[i];
+        code_cell_t *code_cell = code_book->code[i];
         if (last_cell == NULL || compare_code(&last_cell, &code_cell) != 0) {
             if (last_cell != NULL) {
                 fprintf(file, "\n");

@@ -92,7 +92,7 @@ static void read_code_book_stream(FILE *file, code_book_t *code_book) {
             cell->code[i] = code[i];
         }
         cell->unicode = read_utf8_as_unicode(string, NULL);
-        code_book->book[code_book->size++] = cell;
+        add_code_book(code_book, cell);
     }
 }
 
@@ -239,13 +239,13 @@ static void *work_fragment(void *argument) {
             int min = INT_MAX;
             int index = 0;
             for (int i = 0; i <  work->code_book->size; i++) {
-                int d = calculate_distance(sample,  work->code_book->book[i]->code);
+                int d = calculate_distance(sample,  work->code_book->code[i]->code);
                 if (min > d) {
                     min = d;
                     index = i;
                 }
             }
-            work->aa->map[y][x] = work->code_book->book[index]->unicode;
+            work->aa->map[y][x] = work->code_book->code[index]->unicode;
         }
     }
 }

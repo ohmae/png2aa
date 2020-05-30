@@ -37,8 +37,9 @@ typedef struct code_cell_t {
 } code_cell_t;
 
 typedef struct code_book_t {
-    code_cell_t **book;
+    code_cell_t **code;
     int size;
+    int capacity;
 } code_book_t;
 
 typedef struct aa_t {
@@ -54,8 +55,10 @@ typedef struct image_t {
 } image_t;
 
 void *xmalloc(size_t n);
+void *xrealloc(void *ptr, size_t size);
 void init_code_book(code_book_t *code_book);
 void free_code_book(code_book_t *code_book);
+void add_code_book(code_book_t *code_book, code_cell_t *code_cell);
 void print_unicode_as_utf8(FILE *file, uint32_t unicode);
 uint32_t read_utf8_as_unicode(const char *c, int *count);
 
