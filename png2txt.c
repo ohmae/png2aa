@@ -61,11 +61,11 @@ int main(int argc, char **argv) {
     code_book_t book;
     init_code_book(&book);
     read_code_book_file(code_book_file, &book);
-    image_t img;
-    read_png_file(image_file, &img);
-    adjust_luminance(&book, &img);
-    image_to_text(stdout, &book, &img, thread_num);
-    free_image(&img);
+    image_t image;
+    read_png_file(image_file, &image);
+    adjust_luminance(&book, &image);
+    image_to_text(stdout, &book, &image, thread_num);
+    free_image(&image);
     free_code_book(&book);
     return EXIT_SUCCESS;
 }
