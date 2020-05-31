@@ -31,6 +31,7 @@ static void free_image(image_t *img);
 static void image_to_text(FILE *file, code_book_t *code_book, image_t *image, int thread_num);
 static int calculate_distance(uint8_t *a, uint8_t *b);
 static void *work_fragment(void *argument);
+static void adjust_luminance(code_book_t *code_book, image_t *image);
 
 int main(int argc, char **argv) {
     char *code_book_file = NULL;
@@ -62,6 +63,7 @@ int main(int argc, char **argv) {
     read_code_book_file(code_book_file, &book);
     image_t img;
     read_png_file(image_file, &img);
+    adjust_luminance(&book, &img);
     image_to_text(stdout, &book, &img, thread_num);
     free_image(&img);
     free_code_book(&book);
@@ -297,4 +299,21 @@ static int calculate_distance(uint8_t *a, uint8_t *b) {
         distance += abs(a[i] - b[i]);
     }
     return distance;
+}
+
+static void adjust_luminance(code_book_t *code_book, image_t *image) {
+    int min = 255;
+    for (int i = 0; i < code_book->size; i++) {
+        for (int j = 0; j < CODE_SIZE; ++j) {
+            int p = code_book->code[i]->code[j];
+            if (min > p) {
+                min = p;
+            }
+        }
+    }
+    for (int y = 0; y < image->height; ++y) {
+        for (int x = 0; x < image->width; ++x) {
+            image->map[y][x] = (image->map[y][x] * (255 - min)) / 255 + min;
+        }
+    }
 }
